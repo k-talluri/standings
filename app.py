@@ -1,6 +1,7 @@
 import os
 import time
 import json
+import re
 from slack_bolt import App
 from collections import defaultdict
 from slack_sdk.errors import SlackApiError
@@ -47,14 +48,14 @@ def initialize_leaderboard():
 def update_home_tab(client, event, logger):
     initialize_leaderboard()
 
-@app.message("leaderboard")
+@app.message(re.compile(r"(?i)leaderboard"))
 def show_leaderboard(message, say):
     initialize_leaderboard()
     sorted_leaderboard = sorted(leaderboard.items(), key=lambda x: x[1], reverse=True)
     leaderboard_text = "\n".join([f"<@{user}>: {points} points" for user, points in sorted_leaderboard])
     say(f"Leaderboard:\n{leaderboard_text}")
 
-@app.message("report win")
+@app.message(re.compile(r"(?i)report win"))
 def report_win(message, say):
     text = message['text'].split()
     if len(text) != 3:
@@ -70,7 +71,7 @@ def report_win(message, say):
 
     update_leaderboard(reporter, opponent, say, win=True)
 
-@app.message("report loss")
+@app.message(re.compile(r"(?i)report loss"))
 def report_loss(message, say):
     text = message['text'].split()
     if len(text) != 3:
@@ -86,7 +87,7 @@ def report_loss(message, say):
 
     update_leaderboard(opponent, reporter, say, win=True)
 
-@app.message("revert result")
+@app.message(re.compile(r"(?i)revert result"))
 def revert_result(message, say):
     text = message['text'].split()
     if len(text) != 3:
