@@ -44,16 +44,54 @@ def initialize_leaderboard():
     except SlackApiError as e:
         print(f"Error fetching channel members: {e.response['error']}")
 
+def calculate_wins_losses():
+    wins_losses = defaultdict(lambda: {'wins': 0, 'losses': 0})
+    for game in game_history:
+        wins_losses[game['reporter']]['wins'] += 1
+        wins_losses[game['opponent']]['losses'] += 1
+    return wins_losses
+
+def calculate_head_to_head():
+    head_to_head = defaultdict(lambda: defaultdict(lambda: {'wins': 0, 'losses': 0}))
+    for game in game_history:
+        head_to_head[game['reporter']][game['opponent']]['wins'] += 1
+        head_to_head[game['opponent']][game['reporter']]['losses'] += 1
+    return head_to_head
+
 @app.event("app_home_opened")
 def update_home_tab(client, event, logger):
     initialize_leaderboard()
+    
+@app.message(re.compile(r"(?i)stats"))    
+def head_to_head(message, say):
+    text = message['text'].split()
+    if len(text) not in [2, 3]:
+        say("Please use the format: 'stats @user1 [@user2]'. If you use the format 'stats @user1', the stats will be shown against yourself.")
+        return
+
+    requester = message['user']
+    user1 = text[1][2:-1]  # Extract user ID from mention format
+    user2 = text[2][2:-1] if len(text) == 3 else requester  # Extract user ID from mention format or use requester
+
+    head_to_head_stats = calculate_head_to_head()
+    user1_stats = head_to_head_stats[user1][user2]
+    user2_stats = head_to_head_stats[user2][user1]
+
+    say(f"Head to Head between <@{user1}> and <@{user2}>:\n"
+        f"<@{user1}>: {user1_stats['wins']} wins, {user1_stats['losses']} losses\n"
+        f"<@{user2}>: {user2_stats['wins']} wins, {user2_stats['losses']} losses")
+    # print(f"Head to Head between <@{user1}> and <@{user2}>:\n"
+    #     f"<@{user1}>: {user1_stats['wins']} wins, {user1_stats['losses']} losses\n"
+    #     f"<@{user2}>: {user2_stats['wins']} wins, {user2_stats['losses']} losses")
 
 @app.message(re.compile(r"(?i)leaderboard"))
 def show_leaderboard(message, say):
     initialize_leaderboard()
+    wins_losses = calculate_wins_losses()
     sorted_leaderboard = sorted(leaderboard.items(), key=lambda x: x[1], reverse=True)
-    leaderboard_text = "\n".join([f"<@{user}>: {points} points" for user, points in sorted_leaderboard])
+    leaderboard_text = "\n".join([f"<@{user}>: {points} points, {wins_losses[user]['wins']} wins, {wins_losses[user]['losses']} losses" for user, points in sorted_leaderboard])
     say(f"Leaderboard:\n{leaderboard_text}")
+    # print(f"Leaderboard:\n{leaderboard_text}")
 
 @app.message(re.compile(r"(?i)report win"))
 def report_win(message, say):
@@ -139,6 +177,14 @@ def update_leaderboard(winner, loser, say, win=True):
         save_data()
 
     say(f"<@{winner}> now has {leaderboard[winner]} points. <@{loser}> now has {leaderboard[loser]} points.")
+    # print head to head stats between winner and loser
+    head_to_head_stats = calculate_head_to_head()
+    user1_stats = head_to_head_stats[winner][loser]
+    user2_stats = head_to_head_stats[loser][winner]
+    say(f"Head to Head between <@{winner}> and <@{loser}>:\n"
+        f"<@{winner}>: {user1_stats['wins']} wins, {user1_stats['losses']} losses\n"
+        f"<@{loser}>: {user2_stats['wins']} wins, {user2_stats['losses']} losses")
+    
     show_leaderboard(None, say)
 
 if __name__ == "__main__":
