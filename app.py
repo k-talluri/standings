@@ -142,6 +142,12 @@ def revert_result(message, say):
             save_data()
             say(f"Result between <@{reporter}> and <@{opponent}> has been reverted.")
             return
+        elif game['opponent'] == reporter and game['reporter'] == opponent and time.time() - game['timestamp'] <= 86400:
+            update_leaderboard(game['reporter'], game['opponent'], say, win=False)
+            game_history.remove(game)
+            save_data()
+            say(f"Result between <@{reporter}> and <@{opponent}> has been reverted.")
+            return
 
     say("No recent game found to revert or the 24-hour window has passed.")
 
