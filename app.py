@@ -15,6 +15,7 @@ app = App(
 # Initialize leaderboard and game history
 leaderboard = defaultdict(lambda: 2000)
 game_history = []
+current_channel_members = set()
 
 LEADERBOARD_FILE = "leaderboard.json"
 GAME_HISTORY_FILE = "game_history.json"
@@ -35,9 +36,11 @@ def load_data():
             game_history = json.load(f)
 
 def initialize_leaderboard():
+    global current_channel_members
     try:
         response = app.client.conversations_members(channel=os.environ.get("SLACK_CHANNEL_ID"))
-        for user in response['members']:
+        current_channel_members = set(response['members'])
+        for user in current_channel_members:
             if user not in leaderboard and user != "U088NEYGB6D":
                 leaderboard[user] = 2000
         save_data()
@@ -89,7 +92,8 @@ def show_leaderboard(message, say):
     initialize_leaderboard()
     wins_losses = calculate_wins_losses()
     sorted_leaderboard = sorted(leaderboard.items(), key=lambda x: x[1], reverse=True)
-    leaderboard_text = "\n".join([f"<@{user}>: {points} points, {wins_losses[user]['wins']} wins, {wins_losses[user]['losses']} losses" for user, points in sorted_leaderboard])
+    leaderboard_text = "\n".join([f"<@{user}>: {points} points, {wins_losses[user]['wins']} wins, {wins_losses[user]['losses']} losses" 
+                                  for user, points in sorted_leaderboard if user in current_channel_members])
     say(f"Leaderboard:\n{leaderboard_text}")
     # print(f"Leaderboard:\n{leaderboard_text}")
 
@@ -137,13 +141,13 @@ def revert_result(message, say):
 
     for game in game_history:
         if game['reporter'] == reporter and game['opponent'] == opponent and time.time() - game['timestamp'] <= 86400:
-            update_leaderboard(game['opponent'], game['reporter'], say, win=False)
+            update_leaderboard(game['opponent'], game['reporter'], say, win=False, revert=True)
             game_history.remove(game)
             save_data()
             say(f"Result between <@{reporter}> and <@{opponent}> has been reverted.")
             return
         elif game['opponent'] == reporter and game['reporter'] == opponent and time.time() - game['timestamp'] <= 86400:
-            update_leaderboard(game['reporter'], game['opponent'], say, win=False)
+            update_leaderboard(game['reporter'], game['opponent'], say, win=False, revert=True)
             game_history.remove(game)
             save_data()
             say(f"Result between <@{reporter}> and <@{opponent}> has been reverted.")
@@ -155,7 +159,7 @@ def revert_result(message, say):
 def handle_message_events(body, logger):
     logger.info(body)
 
-def update_leaderboard(winner, loser, say, win=True):
+def update_leaderboard(winner, loser, say, win=True, revert=False):
     winner_points = leaderboard[winner]
     loser_points = leaderboard[loser]
     point_diff = abs(winner_points - loser_points)
@@ -178,9 +182,17 @@ def update_leaderboard(winner, loser, say, win=True):
     leaderboard[winner] += points
     leaderboard[loser] -= points
 
-    if win:
+    if win and not revert:
         game_history.append({'reporter': winner, 'opponent': loser, 'timestamp': time.time()})
         save_data()
+    elif revert:
+        # Revert win/loss records
+        if win:
+            leaderboard[winner] -= points
+            leaderboard[loser] += points
+        else:
+            leaderboard[winner] += points
+            leaderboard[loser] -= points
 
     say(f"<@{winner}> now has {leaderboard[winner]} points. <@{loser}> now has {leaderboard[loser]} points.")
     # print head to head stats between winner and loser
